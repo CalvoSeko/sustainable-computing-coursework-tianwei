@@ -75,7 +75,7 @@ def apply_seasonal_differencing(series, m):
     return series.diff(m).dropna()
 
 
-# --- Execution Block ---
+# --- Execution Block --- 
 if __name__ == "__main__":
     # Preprocessing
     df = pd.read_csv('data/df_fuel_ckan.csv')
