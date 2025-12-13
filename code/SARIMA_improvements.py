@@ -33,10 +33,10 @@ def perform_iterative_adf_test(data_train):
         print(f"p-value: {p_value:.4f}")
         
         if p_value < 0.05:
-            print(f"✅ p-value < 0.05. The time series is stationary at order d={d}.")
+            print(f"p-value < 0.05. The time series is stationary at order d={d}.")
             return d, current_series
         else:
-            print(f"❌ p-value >= 0.05. The time series is non-stationary. Applying differencing...")
+            print(f"p-value >= 0.05. The time series is non-stationary. Applying differencing...")
             current_series = current_series.diff().dropna()
             d += 1
     
@@ -77,26 +77,8 @@ def apply_seasonal_differencing(series, m):
 
 # --- Execution Block ---
 if __name__ == "__main__":
-    # --- Data Setup (Placeholder/Example) ---
-    # Using a placeholder function to create non-stationary data
-    def load_demo_data():
-        np.random.seed(42)
-        dates = pd.date_range(start='2010-01-01', end='2024-12-31', freq='D')
-        # Create non-stationary data with a strong seasonal (yearly) trend
-        noise = np.random.normal(0, 1, len(dates))
-        seasonal = 10 * np.sin(2 * np.pi * dates.dayofyear / 365.25)
-        trend = np.linspace(0, 20, len(dates))
-        series = seasonal + trend + noise
-        df = pd.DataFrame({'DATETIME': dates, 'CARBON_INTENSITY': series})
-        return df
-
-    try:
-        df = load_demo_data()
-    except Exception as e:
-        print(f"Error loading file: {e}. Using demonstration data.")
-        df = load_demo_data()
-
     # Preprocessing
+    df = pd.read_csv('data/df_fuel_ckan.csv')
     df['DATETIME'] = pd.to_datetime(df['DATETIME'])
     df_filtered = df[df['DATETIME'].dt.year < 2025].copy()
     df_filtered.set_index('DATETIME', inplace=True)
