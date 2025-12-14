@@ -9,3 +9,5 @@ It contains the code used for the coursework, including the CI data and the powe
 It uses SARIMA to generate a forecast for the CI data.
 ### LSTM_forecasting.ipynb ###
 It uses LSTM to generate a forecast for the CI data.
+### ml_forecasting.py and sarima_forecasting.py ###
+Demos for potential improvements to the python notebooks
