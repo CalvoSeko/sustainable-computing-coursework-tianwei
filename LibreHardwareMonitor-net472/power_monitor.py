@@ -1,96 +1,129 @@
-import clr # From pip install pythonnet
+import clr
 import time
 import os
 import sys
+import threading
+from functools import wraps
 
-# 1. Load the LibreHardwareMonitor Library
-# Ensure we are in the correct directory or add it to path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(current_dir)
 
-try:
-    # Use full path to ensure it's found
-    dll_path = os.path.join(current_dir, "LibreHardwareMonitorLib.dll")
-    if not os.path.exists(dll_path):
-         raise FileNotFoundError(f"DLL not found at {dll_path}")
-    
-    clr.AddReference(dll_path)
-    from LibreHardwareMonitor.Hardware import Computer
-except Exception as e:
-    print("Error loading DLL.")
-    print(e)
-    exit()
+dll_path = os.path.join(current_dir, "LibreHardwareMonitorLib.dll")
+clr.AddReference(dll_path)
+from LibreHardwareMonitor.Hardware import Computer
 
-# 2. Initialize the Hardware
-# Check for Admin privileges
-import ctypes
-def is_admin():
-    try:
-        return ctypes.windll.shell32.IsUserAnAdmin()
-    except:
-        return False
 
-if not is_admin():
-    print("Warning: Script is not running as Administrator. CPU Power sensors might not be detected.")
+def get_power_sensors():
+    """Return (computer, list_of_sensors) for all sensors with SensorType 'Power'."""
+    computer = Computer()
+    # enable common hardware; guard with hasattr
+    for attr in ("IsCpuEnabled", "IsGpuEnabled", "IsMemoryEnabled", "IsMotherboardEnabled", "IsStorageEnabled"):
+        if hasattr(computer, attr):
+            setattr(computer, attr, True)
+    computer.Open()
 
-computer = Computer()
-computer.IsCpuEnabled = True  # Enable CPU sensors
-computer.Open()
+    sensors = []
+    for hardware in computer.Hardware:
+        hardware.Update()
+        for sensor in hardware.Sensors:
+            if str(sensor.SensorType) == "Power":
+                sensors.append(sensor)
 
-# 3. Find the Power Sensor (Package Power)
-power_sensor = None
+    if not sensors:
+        computer.Close()
+        raise RuntimeError("No power sensors found. Try running as Administrator.")
 
-# Iterate through hardware to find the CPU
-for hardware in computer.Hardware:
-    hardware.Update() # Must update to read sensors
-    print(f"Checking hardware: {hardware.Name}")
-    
-    for sensor in hardware.Sensors:
-        # Look for "Power" type sensors with "Package" in the name
-        if str(sensor.SensorType) == "Power" and "Package" in sensor.Name:
-            print(f"  -> FOUND: {sensor.Name} ({sensor.Identifier})")
-            power_sensor = sensor
-            break
-    if power_sensor:
-        break
+    return computer, sensors
 
-if not power_sensor:
-    print("Could not find CPU Package Power sensor!")
-    if not is_admin():
-        print("-> Try running this script as Administrator.")
-    exit()
 
-# 4. Log Data at 100ms Interval
-print(f"\nLogging {power_sensor.Name} every 100ms... (Press Ctrl+C to stop)")
-start_time = time.time()
-next_log_time = start_time + 0.1
+class PowerMonitor:
+    """Measure power for all discovered power sensors.
 
-try:
-    with open("power_log_100ms.csv", "w") as f:
-        f.write("Time_Seconds,Watts\n") # Header
-        
-        while True:
-            # Update ONLY the CPU hardware to keep it fast
-            power_sensor.Hardware.Update()
-            
-            # Get timestamp and value
-            now = time.time()
-            elapsed = now - start_time
-            watts = power_sensor.Value
-            
-            # Write to file (flush immediately so data isn't lost on crash)
-            f.write(f"{elapsed:.3f},{watts}\n")
-            f.flush() 
-            
-            # Calculate sleep time to maintain 100ms cadence
-            sleep_duration = next_log_time - time.time()
-            if sleep_duration > 0:
-                time.sleep(sleep_duration)
-            
-            # Set target for next interval
-            next_log_time += 0.1
+    CSV format: Time_Seconds,Sensor_Name,Sensor_ID,Watts
+    """
 
-except KeyboardInterrupt:
-    print("\nLogging stopped.")
-finally:
-    computer.Close()
+    def __init__(self, filename="power_log.csv", interval=0.1):
+        self.filename = filename
+        self.interval = interval
+        self.computer = None
+        self.sensors = []
+        self.data = []  # list of (elapsed, [(name,id,value), ...])
+        self.running = False
+
+    def start(self):
+        self.computer, self.sensors = get_power_sensors()
+        self.data = []
+        self.running = True
+        self.start_time = time.time()
+        threading.Thread(target=self._monitor, daemon=True).start()
+
+    def _monitor(self):
+        next_time = self.start_time + self.interval
+        while self.running:
+            elapsed = time.time() - self.start_time
+            row = []
+            for s in self.sensors:
+                # update the hardware the sensor belongs to
+                try:
+                    s.Hardware.Update()
+                except Exception:
+                    pass
+                row.append((s.Name, str(s.Identifier), s.Value))
+            self.data.append((elapsed, row))
+
+            sleep_time = next_time - time.time()
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+            next_time += self.interval
+
+    def stop(self):
+        self.running = False
+        if self.computer:
+            self.computer.Close()
+
+        # write per-sensor rows
+        with open(self.filename, "w", encoding="utf-8") as f:
+            f.write("Time_Seconds,Sensor_Name,Sensor_ID,Watts\n")
+            for elapsed, rows in self.data:
+                for name, sid, watts in rows:
+                    f.write(f"{elapsed:.3f},{name},{sid},{watts}\n")
+
+    def stats(self):
+        if not self.data:
+            return None
+        per_sensor = {}
+        for _, rows in self.data:
+            for name, sid, watts in rows:
+                per_sensor.setdefault(name, []).append(watts)
+
+        out = {}
+        for name, vals in per_sensor.items():
+            out[name] = {
+                "min": min(vals),
+                "max": max(vals),
+                "avg": sum(vals) / len(vals),
+                "samples": len(vals)
+            }
+        return out
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, *args):
+        self.stop()
+
+    def __call__(self, func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            out_name = f"power_{func.__name__}.csv"
+            with PowerMonitor(filename=out_name, interval=self.interval):
+                return func(*args, **kwargs)
+        return wrapper
+
+
+# Quick example when run directly
+if __name__ == "__main__":
+    with PowerMonitor("power_all.csv") as m:
+        time.sleep(2)
+    print(m.stats())
