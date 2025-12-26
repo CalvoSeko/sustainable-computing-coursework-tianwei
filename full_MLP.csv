@@ -1,0 +1,11 @@
+Time_Seconds,Sensor_Name,Sensor_ID,Watts
+0.002,CPU Package,/intelcpu/0/power/0,19.87893295288086
+0.002,CPU Cores,/intelcpu/0/power/1,16.411632537841797
+0.002,CPU Memory,/intelcpu/0/power/3,0.0
+0.002,CPU Platform,/intelcpu/0/power/4,0.0
+0.002,GPU Power,/gpu-intel-integrated/%5C%5C%3F%5CPCI%23VEN_8086%26DEV_46A8%26SUBSYS_8A20103C%26REV_0C%233%2611583659%262%2610%23%7B1ca05180-a699-450a-9a0c-de4fbe3ddd89%7D/power/0,0.03012523241341114
+0.520,CPU Package,/intelcpu/0/power/0,15.074128150939941
+0.520,CPU Cores,/intelcpu/0/power/1,8.563708305358887
+0.520,CPU Memory,/intelcpu/0/power/3,0.0
+0.520,CPU Platform,/intelcpu/0/power/4,0.0
+0.520,GPU Power,/gpu-intel-integrated/%5C%5C%3F%5CPCI%23VEN_8086%26DEV_46A8%26SUBSYS_8A20103C%26REV_0C%233%2611583659%262%2610%23%7B1ca05180-a699-450a-9a0c-de4fbe3ddd89%7D/power/0,0.03012523241341114
